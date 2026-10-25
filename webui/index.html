@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DouyinLiveRecorder 录制管理</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1218;
+    --panel: #181d27;
+    --panel2: #202735;
+    --border: #2b3345;
+    --text: #e6e9f0;
+    --muted: #8b93a7;
+    --accent: #3b82f6;
+    --danger: #ef4444;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+  }
+  .bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .bar h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .storage { flex: 1; min-width: 240px; }
+  .storage .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .track { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); transition: width .5s; }
+  .fill.warn { background: var(--warn); }
+  .fill.full { background: var(--danger); }
+  .btn {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer; font-size: 13px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+  .btn.small { padding: 4px 8px; font-size: 12px; }
+  main { padding: 16px 20px; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  input[type=text], input[type=number], select {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 62px; background: var(--bg); }
+  td.name { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--panel2); color: var(--muted); margin-left: 6px; vertical-align: middle; }
+  .badge.rec { background: rgba(239,68,68,.15); color: var(--danger); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+  #playerPanel { display: none; margin-bottom: 16px; background: #000; border-radius: 10px; overflow: hidden; }
+  #playerPanel video { width: 100%; max-height: 70vh; display: block; background: #000; }
+  .player-title { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--panel); font-size: 13px; }
+  .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 440px; max-width: 92vw; max-height: 90vh; overflow: auto; }
+  .modal h3 { margin: 0 0 12px; font-size: 15px; }
+  .modal .row { margin-bottom: 12px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .modal input, .modal select { width: 100%; }
+  .modal .btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .secret-box { display: flex; align-items: center; gap: 8px; }
+  .secret-box code { flex: 1; background: var(--panel2); padding: 8px; border-radius: 6px; font-size: 13px; word-break: break-all; }
+  #qrBox { text-align: center; margin: 10px 0; }
+  #qrBox img { width: 220px; height: 220px; background: #fff; border-radius: 8px; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; }
+  .link { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .recorder { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .rec-head { display: flex; align-items: center; gap: 10px; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .rec-dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .rec-log { margin-top: 10px; }
+  .rec-log summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  .rec-log pre { background: #0a0d13; color: #c9d1d9; padding: 10px; border-radius: 6px; max-height: 260px; overflow: auto; font-size: 11px; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+  #loginMask { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 200; }
+  .login-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 340px; max-width: 92vw; }
+  .login-card h2 { margin: 0 0 16px; font-size: 18px; }
+  .login-card input { width: 100%; margin-bottom: 12px; }
+  .login-card .btns { display: flex; gap: 10px; }
+  .login-card .btns .btn { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>📼 直播录制管理</h1>
+    <div class="storage">
+      <div class="meta">
+        <span id="storageText">加载中…</span>
+        <span id="fileCount"></span>
+      </div>
+      <div class="track"><div class="fill" id="storageFill" style="width:0%"></div></div>
+    </div>
+    <span id="userBadge" class="badge">未登录</span>
+    <button class="btn admin-only" id="btnSetup">🔑 动态码设置</button>
+    <button class="btn" id="btnRefresh">↻ 刷新</button>
+    <button class="btn" id="btnShowLogin">登录</button>
+    <button class="btn" id="btnLogout" style="display:none">退出</button>
+  </div>
+</header>
+
+<div class="recorder" id="recorderPanel">
+  <div class="rec-head">
+    <span class="rec-dot" id="recDot"></span>
+    <span id="recText">检测中…</span>
+    <span class="muted">录制循环进程</span>
+    <span style="flex:1"></span>
+    <button class="btn small admin-only" id="btnRecStart">▶ 开始录制</button>
+    <button class="btn small admin-only danger" id="btnRecStop">⏹ 停止录制</button>
+  </div>
+  <details class="rec-log admin-only" id="recLogBox">
+    <summary>录制日志</summary>
+    <pre id="recLog">(暂无日志)</pre>
+  </details>
+</div>
+
+<main id="main" style="display:none">
+  <div id="playerPanel">
+    <div class="player-title">
+      <span id="playerName"></span>
+      <button class="btn small" id="btnClosePlayer">关闭播放器</button>
+    </div>
+    <video id="video" controls autoplay playsinline></video>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="filter" placeholder="搜索文件名…" style="width:260px">
+    <select id="typeFilter">
+      <option value="">全部格式</option>
+      <option value="ts">.ts</option>
+      <option value="mp4">.mp4</option>
+      <option value="flv">.flv</option>
+      <option value="mkv">.mkv</option>
+      <option value="m3u8">.m3u8</option>
+      <option value="mp3">.mp3</option>
+      <option value="m4a">.m4a</option>
+    </select>
+    <span class="muted" id="listHint"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:46%">名称</th>
+        <th>目录</th>
+        <th>大小</th>
+        <th>修改时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="empty" style="display:none">暂无录制文件</div>
+</main>
+
+<!-- 剪切片段弹窗 -->
+<div class="modal-mask" id="cutMask">
+  <div class="modal">
+    <h3>✂️ 剪切并下载片段</h3>
+    <div class="muted" id="cutName" style="margin-bottom:12px"></div>
+    <div class="row">
+      <label>开始时间 (秒)</label>
+      <input type="number" id="cutStart" value="0" min="0" step="0.5">
+    </div>
+    <div class="row">
+      <label>结束时间 (秒)</label>
+      <input type="number" id="cutEnd" value="60" min="0" step="0.5">
+    </div>
+    <div class="row">
+      <label>输出格式</label>
+      <select id="cutFormat">
+        <option value="mp4">MP4 (通用, 推荐)</option>
+        <option value="ts">TS (原始封装)</option>
+      </select>
+    </div>
+    <div class="hint">使用 ffmpeg 流拷贝, 速度快; 起止点会就近对齐关键帧。</div>
+    <div class="btns">
+      <button class="btn" id="btnCutCancel">取消</button>
+      <button class="btn primary" id="btnCutOk">开始剪切</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除弹窗 -->
+<div class="modal-mask" id="delMask">
+  <div class="modal">
+    <h3>🗑️ 删除确认</h3>
+    <div class="muted" id="delName" style="margin-bottom:12px"></div>
+    <div class="row" id="delCodeRow">
+      <label>Microsoft Authenticator 动态码 (6位)</label>
+      <input type="text" id="delCode" placeholder="请输入动态码" maxlength="6" inputmode="numeric">
+    </div>
+    <div class="hint" style="color:var(--danger)">删除后不可恢复, 请谨慎操作。</div>
+    <div class="btns">
+      <button class="btn" id="btnDelCancel">取消</button>
+      <button class="btn danger" id="btnDelOk">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 动态码设置弹窗 -->
+<div class="modal-mask" id="setupMask">
+  <div class="modal">
+    <h3>🔑 动态码设置 (Microsoft Authenticator)</h3>
+    <div class="row">
+      <label>1. 使用手机 Microsoft Authenticator 扫描下方二维码</label>
+      <div id="qrBox"><img id="qrImg" alt="QR"></div>
+    </div>
+    <div class="row">
+      <label>2. 或手动输入密钥</label>
+      <div class="secret-box">
+        <code id="setupSecret"></code>
+        <button class="btn small" id="btnCopySecret">复制</button>
+      </div>
+    </div>
+    <div class="hint">删除视频文件时需要输入 Authenticator 中显示的 6 位动态码。</div>
+    <div class="btns">
+      <button class="btn" id="btnSetupClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 登录 -->
+<div class="modal-mask" id="loginMask" style="background:var(--bg)">
+  <div class="login-card">
+    <h2>登录</h2>
+    <input type="text" id="loginUser" placeholder="用户名 (管理员: admin)">
+    <input type="password" id="loginPass" placeholder="密码">
+    <div class="btns">
+      <button class="btn primary" id="btnLogin">登录</button>
+      <button class="btn" id="btnGuest">游客浏览</button>
+    </div>
+    <div class="hint">管理员可开关录制、删除文件; 游客仅可浏览/播放/下载/剪切。</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  let videos = [];
+  let totpStatus = { enabled: true, has_secret: true };
+  let hls = null, flv = null;
+  let role = null;       // 'admin' | 'guest' | null
+  let userName = '';
+  const video = document.getElementById('video');
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+    return n.toFixed(1) + ' ' + units[i];
+  }
+  function fmtTime(ts) {
+    const d = new Date(ts * 1000);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  function showLogin() {
+    $('loginMask').style.display = 'flex';
+    $('main').style.display = 'none';
+  }
+  function hideLogin() {
+    $('loginMask').style.display = 'none';
+    $('main').style.display = 'block';
+  }
+  function applyRole() {
+    const isAdmin = role === 'admin';
+    $('userBadge').textContent = isAdmin ? '管理员 ' + userName : (role === 'guest' ? '游客 ' + userName : '未登录');
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
+    $('btnShowLogin').style.display = role ? 'none' : '';
+    $('btnLogout').style.display = role ? '' : 'none';
+  }
+  async function checkMe() {
+    try {
+      const r = await fetch('/api/me');
+      if (r.status === 401) { role = null; applyRole(); showLogin(); return; }
+      const d = await r.json();
+      role = d.role; userName = d.name;
+      applyRole(); hideLogin();
+      loadAll();
+    } catch (e) { role = null; applyRole(); showLogin(); }
+  }
+  async function api(path, opts = {}) {
+    const r = await fetch(path, opts);
+    if (r.status === 401) { role = null; applyRole(); showLogin(); throw new Error('未登录'); }
+    return r;
+  }
+
+  async function loadStorage() {
+    try {
+      const r = await api('/api/storage');
+      const d = await r.json();
+      const pct = d.quota_bytes > 0 ? (d.used_bytes / d.quota_bytes * 100) : 0;
+      $('storageText').textContent =
+        `已用 ${fmtBytes(d.used_bytes)} / 配额 ${fmtBytes(d.quota_bytes)} · 磁盘共 ${fmtBytes(d.total_disk_bytes)} · 保留 ${d.retention_days} 天`;
+      const fill = $('storageFill');
+      fill.style.width = Math.min(100, pct) + '%';
+      fill.className = 'fill' + (pct >= 95 ? ' full' : pct >= 80 ? ' warn' : '');
+      $('fileCount').textContent = `${d.file_count} 个文件`;
+    } catch (e) { /* ignore */ }
+  }
+
+  async function loadVideos() {
+    try {
+      const r = await api('/api/videos');
+      const d = await r.json();
+      videos = d.videos || [];
+      renderVideos();
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderVideos() {
+    const kw = $('filter').value.trim().toLowerCase();
+    const type = $('typeFilter').value;
+    const now = Date.now() / 1000;
+    const list = videos.filter(v => {
+      if (type && v.ext !== type) return false;
+      if (kw && v.name.toLowerCase().indexOf(kw) < 0 && v.path.toLowerCase().indexOf(kw) < 0) return false;
+      return true;
+    });
+
+    const tbody = $('tbody');
+    tbody.innerHTML = '';
+    $('empty').style.display = list.length ? 'none' : 'block';
+    $('listHint').textContent = `显示 ${list.length} / ${videos.length} 个文件 (每5秒自动刷新)`;
+
+    for (const v of list) {
+      const tr = document.createElement('tr');
+      const isRec = (now - v.mtime) < 90 && ['ts','mp4','flv','mkv'].includes(v.ext);
+      const delBtn = role === 'admin' ? `<button class="btn small danger" data-act="delete">删除</button>` : '';
+      tr.innerHTML =
+        `<td class="name" title="${esc(v.path)}">${esc(v.name)}${isRec ? '<span class="badge rec">录制中</span>' : ''}</td>` +
+        `<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.dir)}">${esc(v.dir)}</td>` +
+        `<td class="muted">${fmtBytes(v.size)}</td>` +
+        `<td class="muted">${fmtTime(v.mtime)}</td>` +
+        `<td><div class="actions">` +
+          `<button class="btn small" data-act="play">播放</button>` +
+          `<button class="btn small" data-act="download">下载</button>` +
+          `<button class="btn small" data-act="cut">剪切</button>` +
+          delBtn +
+        `</div></td>`;
+      tr.querySelector('[data-act="play"]').onclick = () => playFile(v);
+      tr.querySelector('[data-act="download"]').onclick = () => downloadFile(v);
+      tr.querySelector('[data-act="cut"]').onclick = () => openCut(v);
+      const delEl = tr.querySelector('[data-act="delete"]');
+      if (delEl) delEl.onclick = () => openDelete(v);
+      tbody.appendChild(tr);
+    }
+  }
+
+  function playFile(v) {
+    destroyPlayers();
+    const ext = v.ext;
+    const streamUrl = '/api/stream?path=' + encodeURIComponent(v.path);
+    const nameEl = $('playerName');
+    nameEl.textContent = v.path;
+    $('playerPanel').style.display = 'block';
+    $('playerPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    if (ext === 'm3u8') {
+      if (window.Hls && Hls.isSupported()) { hls = new Hls(); hls.attachMedia(video); hls.loadSource(streamUrl); }
+      else { video.src = streamUrl; }
+    } else if (ext === 'ts') {
+      const pl = '/api/playlist?path=' + encodeURIComponent(v.path);
+      if (window.Hls && Hls.isSupported()) { hls = new Hls(); hls.attachMedia(video); hls.loadSource(pl); }
+      else { video.src = pl; }
+    } else if (ext === 'flv') {
+      if (window.flvjs && flvjs.isSupported()) {
+        flv = flvjs.createPlayer({ type: 'flv', url: streamUrl });
+        flv.attachMediaElement(video); flv.load();
+      } else { alert('当前浏览器不支持 FLV 播放, 请下载后观看'); }
+    } else if (['mkv', 'mov'].includes(ext)) {
+      if (video.canPlayType('video/x-matroska') || video.canPlayType('video/quicktime')) {
+        video.src = streamUrl;
+      } else { alert('当前浏览器可能无法播放 ' + ext + ' 格式, 建议下载后观看'); }
+    } else {
+      video.src = streamUrl;
+    }
+    video.play().catch(() => {});
+  }
+
+  function destroyPlayers() {
+    try { if (hls) { hls.destroy(); } } catch (e) {}
+    try { if (flv) { flv.destroy(); } } catch (e) {}
+    hls = null; flv = null;
+    video.removeAttribute('src');
+    try { video.load(); } catch (e) {}
+  }
+
+  function downloadFile(v) {
+    const a = document.createElement('a');
+    a.href = '/api/download?path=' + encodeURIComponent(v.path);
+    a.download = v.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function openCut(v) {
+    $('cutName').textContent = v.path;
+    $('cutStart').value = 0;
+    $('cutEnd').value = 60;
+    $('cutFormat').value = 'mp4';
+    $('cutMask').style.display = 'flex';
+    $('cutMask').dataset.path = v.path;
+  }
+
+  function openDelete(v) {
+    $('delName').textContent = v.path;
+    $('delCode').value = '';
+    $('delCodeRow').style.display = (totpStatus.enabled && totpStatus.has_secret) ? 'block' : 'none';
+    $('delMask').style.display = 'flex';
+    $('delMask').dataset.path = v.path;
+  }
+
+  $('btnCutCancel').onclick = () => $('cutMask').style.display = 'none';
+  $('btnDelCancel').onclick = () => $('delMask').style.display = 'none';
+  $('btnClosePlayer').onclick = () => { destroyPlayers(); $('playerPanel').style.display = 'none'; };
+  $('btnRefresh').onclick = () => { loadAll(); };
+  $('filter').oninput = renderVideos;
+  $('typeFilter').onchange = renderVideos;
+  $('cutMask').onclick = e => { if (e.target === $('cutMask')) $('cutMask').style.display = 'none'; };
+  $('delMask').onclick = e => { if (e.target === $('delMask')) $('delMask').style.display = 'none'; };
+  $('setupMask').onclick = e => { if (e.target === $('setupMask')) $('setupMask').style.display = 'none'; };
+
+  $('btnCutOk').onclick = async () => {
+    const path = $('cutMask').dataset.path;
+    const start = parseFloat($('cutStart').value);
+    const end = parseFloat($('cutEnd').value);
+    const format = $('cutFormat').value;
+    if (isNaN(start) || isNaN(end) || end <= start) { alert('请输入正确的起止时间 (结束需大于开始)'); return; }
+    $('btnCutOk').disabled = true;
+    $('btnCutOk').textContent = '剪切中…';
+    try {
+      const r = await fetch('/api/segment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, start, end, format })
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        alert('剪切失败: ' + (e.error || r.status));
+        return;
+      }
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = path.split('/').pop().replace(/\.[^.]+$/, '') + `_clip_${start}-${end}.${format}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      $('cutMask').style.display = 'none';
+    } catch (e) {
+      alert('剪切失败: ' + e.message);
+    } finally {
+      $('btnCutOk').disabled = false;
+      $('btnCutOk').textContent = '开始剪切';
+    }
+  };
+
+  $('btnDelOk').onclick = async () => {
+    const path = $('delMask').dataset.path;
+    const code = $('delCode').value.trim();
+    $('btnDelOk').disabled = true;
+    $('btnDelOk').textContent = '删除中…';
+    try {
+      const r = await fetch('/api/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, code })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok) {
+        $('delMask').style.display = 'none';
+        loadStorage(); loadVideos();
+      } else {
+        alert('删除失败: ' + (d.error || r.status));
+      }
+    } catch (e) {
+      alert('删除失败: ' + e.message);
+    } finally {
+      $('btnDelOk').disabled = false;
+      $('btnDelOk').textContent = '确认删除';
+    }
+  };
+
+  async function loadTotpStatus() {
+    if (role !== 'admin') return;
+    try {
+      const r = await api('/api/totp/status');
+      totpStatus = await r.json();
+    } catch (e) { /* ignore */ }
+  }
+
+  async function loadRecorderStatus() {
+    try {
+      const r = await api('/api/recorder/status');
+      const d = await r.json();
+      const dot = $('recDot');
+      const text = $('recText');
+      if (d.running) {
+        dot.className = 'rec-dot on';
+        text.textContent = `运行中 · PID ${d.pids.join(',')} · 已运行 ${fmtDur(d.uptime_seconds)}`;
+      } else {
+        dot.className = 'rec-dot';
+        text.textContent = '已停止';
+      }
+    } catch (e) { /* ignore */ }
+  }
+  async function loadRecorderLog() {
+    if (role !== 'admin') return;
+    try {
+      const r = await api('/api/recorder/log?lines=120');
+      const d = await r.json();
+      $('recLog').textContent = d.log || '(暂无日志)';
+    } catch (e) { /* ignore */ }
+  }
+  function fmtDur(s) {
+    if (s == null) return '—';
+    s = Math.max(0, Math.floor(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return `${h}时${m}分${ss}秒`;
+  }
+  $('btnRecStart').onclick = async () => {
+    const r = await api('/api/recorder/start', { method: 'POST' });
+    const d = await r.json();
+    alert(d.message || (d.ok ? '已启动' : '启动失败'));
+    setTimeout(loadRecorderStatus, 2000);
+  };
+  $('btnRecStop').onclick = async () => {
+    if (!confirm('确定停止录制循环? 正在录制的片段会正常保存。')) return;
+    const r = await api('/api/recorder/stop', { method: 'POST' });
+    const d = await r.json();
+    alert(d.message || (d.ok ? '已停止' : '停止失败'));
+    setTimeout(loadRecorderStatus, 2000);
+  };
+
+  $('btnSetup').onclick = async () => {
+    $('setupMask').style.display = 'flex';
+    try {
+      const r = await fetch('/api/totp/setup');
+      const d = await r.json();
+      if (d.secret) {
+        $('setupSecret').textContent = d.secret;
+        $('qrImg').src = '/api/totp/qr';
+      }
+    } catch (e) { /* ignore */ }
+  };
+  $('btnSetupClose').onclick = () => $('setupMask').style.display = 'none';
+  $('btnCopySecret').onclick = () => {
+    const t = $('setupSecret').textContent;
+    if (t) navigator.clipboard.writeText(t).then(() => alert('已复制'));
+  };
+
+  function loadAll() {
+    loadTotpStatus();
+    loadStorage();
+    loadVideos();
+    loadRecorderStatus();
+    loadRecorderLog();
+  }
+
+  $('btnShowLogin').onclick = () => showLogin();
+  $('btnLogin').onclick = async () => {
+    const username = $('loginUser').value.trim();
+    const password = $('loginPass').value;
+    const r = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      role = d.role; userName = d.name;
+      applyRole(); hideLogin();
+      loadAll();
+    } else {
+      alert(d.error || '登录失败');
+    }
+  };
+  $('btnGuest').onclick = () => {
+    $('loginUser').value = 'guest';
+    $('loginPass').value = '';
+    $('btnLogin').click();
+  };
+  $('btnLogout').onclick = async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    role = null; userName = '';
+    applyRole(); showLogin();
+  };
+
+  async function init() {
+    applyRole();
+    setInterval(() => { if (role) { loadVideos(); loadRecorderStatus(); } }, 5000);
+    setInterval(() => { if (role) { loadStorage(); loadRecorderLog(); } }, 10000);
+    await checkMe();
+  }
+  init();
+})();
+</script>
+</body>
+</html>

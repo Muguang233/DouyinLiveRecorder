@@ -430,7 +430,43 @@ uv run main.py
 其中Linux系统请使用`python3 main.py` 运行。
 
 &emsp;
-## 🐋容器运行
+## �️网页管理服务
+
+网页管理服务 `web_server.py` 是独立进程，用于在浏览器中实时浏览、播放、下载、剪切录制的视频文件，并可监控/启动/停止录制循环进程（录制由它拉起的 `main.py` 完成）：
+
+```bash
+python3 web_server.py
+```
+
+启动后访问 `http://<服务器IP>:8000`，功能包括：
+
+- 登录：硬编码管理员账户 `admin`（密码见 `web_server.py` 中的 `ADMIN_PASSWORD`），其余任意用户名登录均为游客
+- 录制控制：查看后台录制循环进程状态，管理员可手动开始/停止录制并查看日志
+- 实时浏览录制目录中的视频文件（每 5 秒自动刷新），内置网页播放器（支持 ts / mp4 / flv / m3u8）
+- 整文件下载；使用 ffmpeg 剪切并下载视频的指定片段
+- 删除视频文件需管理员登录 + Microsoft Authenticator 动态码（TOTP）
+- 存储空间管理：默认分配 80GB 配额，视频保留 3 天，超过保留期或空间快满时自动删除最旧文件
+
+相关配置位于 `config/config.ini` 的 `[网页服务]` 段：
+
+```ini
+[网页服务]
+是否开启网页服务(是/否) = 是
+网页服务监听地址 = 0.0.0.0
+网页服务端口 = 8000
+视频存储配额(gb) = 80
+视频保留天数 = 3
+删除视频需要动态码(是/否) = 是
+自动开始录制(是/否) = 是
+TOTP密钥(base32) = 
+```
+
+首次使用动态码时，打开网页右上角「动态码设置」，用 Microsoft Authenticator 扫描二维码或手动输入密钥即可完成绑定。`TOTP密钥(base32)` 留空会自动随机生成；如需重置，清空该项后重启即可。
+
+> 提示：请务必修改 `web_server.py` 中硬编码的 `ADMIN_PASSWORD`；若直接暴露公网，建议再套一层反向代理 + IP 白名单。
+
+&emsp;
+## �🐋容器运行
 
 在运行命令之前，请确保您的机器上安装了 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/) 
 
